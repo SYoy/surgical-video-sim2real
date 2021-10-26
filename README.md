@@ -4,7 +4,7 @@ This is the official implementation of our ICCV '21 [paper](https://arxiv.org/ab
 
 ![example image](example.png)
 
-Since our model was trained on non-public patient data, this repository contains only a dummy dataset in order to provide a minimal, executable code base. The data that our model generated can, however, be directly downloaded from our [project page](http://opencas.dkfz.de/video-sim2real/).
+Since our model was trained on non-public patient data, this repository contains only a dummy dataset in order to provide a minimal, executable code base. However, the data that our model generated can be directly downloaded from our [project page](http://opencas.dkfz.de/video-sim2real/).
 
 ### Data Generation
 
@@ -66,3 +66,7 @@ Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses
 Additionally, we use the MS-SSIM implementation (```translation_model/pytorch_msssim``` folder) by Jorge Pessoa ([GitHub](https://github.com/jorge-pessoa/pytorch-msssim)) which is licensed under the MIT license.
 
 These licenses allow you to use, modify and share the project for non-commercial use as long as you adhere to the conditions of the license above.
+
+### Contact
+
+If you have any questions, do not hesitate to contact us: ```dominik.rivoir [at] nct-dresden.de```
