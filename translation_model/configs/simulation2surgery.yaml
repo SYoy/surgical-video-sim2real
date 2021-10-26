@@ -24,7 +24,7 @@ recon_x_cyc_w: 10             # weight of explicit style augmented cycle consist
 label_w: 1                    # weight of label loss
 ms_ssim_a_w: 5                # weight of multi-scale structural similarity loss (a -> b)
 ms_ssim_b_w: 3                # weight of multi-scale structural similarity loss (b -> a)
-reprojection_w: 20             # weight of reprojection loss
+view_w: 20                    # weight of view-consistency loss
 
 # model options
 gen:

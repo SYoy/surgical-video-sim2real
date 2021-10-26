@@ -57,7 +57,7 @@ class Renderer():
 		attenuation = a*(depth**2) + b*depth + c
 		return 1 / attenuation
 		
-	def reproject(self,projection_matrix,points3D,img):
+	def warp(self,projection_matrix,points3D,img):
 		# image shape
 		batch_size = img.shape[0]
 		num_channels = img.shape[1]
@@ -94,9 +94,9 @@ class Renderer():
 		scattered = scattered / count
 		# remove pixels out of range and reshape
 		scattered = scattered[:,:,:-1]
-		reprojected = scattered.view(batch_size,num_channels,self.imH,self.imW)
-		reprojected, z = torch.split(reprojected,[3,1],dim=1)
-		return reprojected, z
+		warped = scattered.view(batch_size,num_channels,self.imH,self.imW)
+		warped, z = torch.split(warped,[3,1],dim=1)
+		return warped, z
 
 	def get_z(self,projection_matrix,points3D):
 		ind = torch.squeeze(torch.matmul(projection_matrix,points3D),dim=-1)
