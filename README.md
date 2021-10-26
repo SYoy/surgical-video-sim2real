@@ -1,3 +1,10 @@
+### Long-Term Temporally Consistent Unpaired Video Translation from Simulated Surgical 3D Data
+
+This is the official implementation of our ICCV '21 [paper](https://arxiv.org/abs/2103.17204) for unpaired synthesis of view-consistent surgical video sequences.
+
+![example image](example.png)
+
+Since our model was trained on non-public patient data, this repository contains only a dummy dataset in order to provide a minimal, executable code base. The data that our model generated can, however, be directly downloaded from our [project page](http://opencas.dkfz.de/video-sim2real/).
 
 ### Data Generation
 
@@ -17,7 +24,6 @@ blender ExampleScene_FakeLiver.blend -b -P renderSequences.py -- --test_render -
 
 This will be written to ```data/simulated_sequences/```. Note that the ```train.py``` script translates and saves test images every N iterations. So test data has to be generated before training.
 
-
 ### Training
 
 After synthetic data was generated, run the following to train the model:
@@ -30,6 +36,23 @@ python3 train.py --output_path trials/test_trial
 
 The code was tested on:
 > Python 3.8.5, Pytorch 1.5.0, Blender 2.79b, Torchvision 0.6.0
+
+### Citation
+
+This work was presented at the [IEEE/CVF International Conference on Computer Vision 2021](https://iccv2021.thecvf.com/home). If you use this code, please cite our paper:
+
+```
+@InProceedings{Rivoir_2021_ICCV,
+    author    = {Rivoir, Dominik and Pfeiffer, Micha and Docea, Reuben and Kolbinger, Fiona and Riediger, Carina and Weitz, J\"urgen and Speidel, Stefanie},
+    title     = {Long-Term Temporally Consistent Unpaired Video Translation From Simulated Surgical 3D Data},
+    booktitle = {Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV)},
+    month     = {October},
+    year      = {2021},
+    pages     = {3343-3353}
+}
+```
+
+This work was carried out at the National Center for Tumor Diseases (NCT) Dresden, [Department of Translational Surgical Oncology](https://www.nct-dresden.de/tso.html) and the Centre for Tactile Internet ([CeTI](https://ceti.one/)) at TU Dresden.
 
 ### License
 
