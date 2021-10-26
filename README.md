@@ -9,7 +9,7 @@ blender ExampleScene_FakeLiver.blend -b -P renderRandomImages.py -- --images 10 
 
 Synthetic reference images and render data (texture-pixel correspondences, interpolation weights) for domain A will be written to ```data/simulated/```.
 
-### Test data
+Test data:
 ```
 cd simulated_data_generation
 blender ExampleScene_FakeLiver.blend -b -P renderSequences.py -- --test_render --texture_patch_size 512
