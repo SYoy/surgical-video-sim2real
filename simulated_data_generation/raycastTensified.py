@@ -195,7 +195,7 @@ class Raycaster:
 		
 		return texPosRel, weight
 
-	# loosely based on:
+	# based on:
 	# https://blender.stackexchange.com/questions/38009/3x4-camera-matrix-from-blender-camera
 	def get_projection_matrix(self,cam,first_px,last_px):
 
@@ -237,6 +237,9 @@ class Raycaster:
 		))
 		return torch.Tensor(C*RT)
 
+	#############################################################################
+	### THE MAIN FUNCTION WHERE RENDER DATA (corrData) IS EXTRACTED AND SAVED ###
+	#############################################################################
 	def raycast( self, imageID=0 , generate_sequence=False):
 
 		t0 = time()
@@ -255,15 +258,11 @@ class Raycaster:
 
 		bpy.data.objects["C5"].location = cam.location
 
-		#bpy.ops.wm.save_mainfile(filepath="{}.blend".format(imageID))
-
 		# get raycast hits from blender (slooow)
 		objIDs,locs,normals,b_min,b_size,light_dir  = [],[],[],[],[],[]
 
 		for o in self.objects:
 			o["bmesh"].faces.ensure_lookup_table()
-
-		#normalImage = np.zeros( (self.imH, self.imW, 3) )
 		
 		for x in range(self.imW):
 			for y in range(self.imH):
@@ -275,12 +274,6 @@ class Raycaster:
 				locs.append([l for l in location])
 				normals.append([n for n in normal])
 				light_dir.append([d for d in direction])
-				#normalImage[y,x,:] = (normal[0], normal[1], normal[2])
-				#if x == 0 and y == 0:
-				#    print('raycast: ',location)
-
-		#img = Image.fromarray( ((normalImage + 1) * 128).astype(np.uint8) )
-		#img.save("normals.png")
 
 		# convert results to pytorch tensors (also slooow)
 		objIDs = torch.Tensor(objIDs)
@@ -290,59 +283,81 @@ class Raycaster:
 		b_size = torch.Tensor(b_size)
 		light_src = torch.Tensor(cam.location)
 		light_dir = torch.Tensor(light_dir)
-		# depth for light attentuation
-		depth = torch.norm(locs-light_src,dim=-1).view(self.imW,self.imH).transpose(1,0)
-		# diffusion
-		diffusion = torch.matmul(torch.unsqueeze(normals,dim=1),torch.unsqueeze(-light_dir,dim=2))
-		diffusion = torch.clamp(diffusion,min=0,max=1).view(self.imW,self.imH).transpose(1,0)
-		# 3x4 projection matrix for reprojection
-		first_px, last_px = locs[0], locs[-1]
-		projection_matrix = self.get_projection_matrix(cam,first_px,last_px)
-		#first_px_hom, last_px_hom = torch.cat((first_px, torch.Tensor([1]))), torch.cat((last_px, torch.Tensor([1])))
-		#f = torch.matmul(projection_matrix,first_px_hom)
-		#l = torch.matmul(projection_matrix,last_px_hom)
-		#f = f / f[-1]
-		#l = l / l[-1]
-		#print(f,l)
-		# 3D locations of each pixel in homogeneous coordinates
-		points3D = torch.unsqueeze(torch.cat((locs,torch.ones_like(locs[:,:1])),dim=-1),dim=-1)
 		
+		##############################################################################
+		# indTexList: list of texture coordinates corresponding to each pixel location
+		##############################################################################
 		# compute texture coordinates of potential hits (triplanar mapping)
 		relPos = (locs - b_min) / b_size
 		texIndices = (self.texNormals==0).nonzero()[:,2].view(-1,2)
 		texPosRel = torch.stack([relPos[:,i] for i in texIndices])
-		pTex = torch.cat(((objIDs + texPosRel[:,:,[0]])*self.texPatchW, (self.texNums + texPosRel[:,:,[1]])*self.texPatchH),dim=-1)
+		pTex = torch.cat(((objIDs + texPosRel[:,:,[0]])*self.texPatchW, (self.texNums + texPosRel[:,:,[1]])*self.texPatchH),dim=-1).unsqueeze(dim=1)
 		# get 4 integer corner points from float indices
 		corners = torch.stack(torch.meshgrid(torch.arange(2),torch.arange(2))).permute(1,2,0).view(-1,1,2)
-		pTex = torch.unsqueeze(pTex,dim=1)
-		rest = pTex - pTex.floor()
+		# get 4 surrounding, discrete textures coordinates for each continuous texture coordinate
+		# and convert from 2D coordinates to 1D indices
+		indTex = self.continuous(pTex.floor().type(torch.long) + corners,self.texW)
 		# create mask which indicates hits (1) and misses (0) for each texture view
+		# hit: dot product of texture and surface normal > 0 (i.e. surface point faces the texture plane)
 		n_dot = torch.sum(normals*self.texNormals,dim=-1,keepdim=True)
 		hits = n_dot.gt(0).type(torch.float).transpose(1,2)
-		# compute weights (combined binlinear coefficients and texture patch (triplanar) weights)
-		cornerWeights = torch.prod(rest+corners.type(torch.float)-1,dim=-1).abs()
-		texWeights = (torch.clamp(n_dot,min=0)**2).transpose(1,2)
-		weights = (texWeights*cornerWeights*hits).view(6,4,self.imW,self.imH).transpose(2,3)
-		# from 2D coordinates to 1D indices
-		indIm = self.continuous(self.pIm.view(1,-1,2).repeat(6,1,1),self.imW)
-		indTex = self.continuous(pTex.type(torch.long) + corners,self.texW)
-		# remove invalid correspondences and convert to int tensors
-		indImList = [iI.index_select(dim=0,index=h.nonzero().view(-1)).type(torch.IntTensor) for [h],iI in zip(hits,indIm)]
+		# keep only the texture coordinates/indices that were hit
 		indTexList = [iT.index_select(dim=1,index=h.nonzero().view(-1)).type(torch.IntTensor) for [h],iT in zip(hits,indTex)]
 
+		############################################
+		# indImList: corresponding pixel coordinates
+		############################################
+		# expand pixel coordinates x6 (1 for each texture plane) and convert to 1D indices
+		indIm = self.continuous(self.pIm.view(1,-1,2).repeat(6,1,1),self.imW)
+		# keep only the ones where the dot product of texture and surface normal > 0 (i.e. hits)
+		indImList = [iI.index_select(dim=0,index=h.nonzero().view(-1)).type(torch.IntTensor) for [h],iI in zip(hits,indIm)]
+
+		#############################################
+		# weights: (combined binlinear and triplanar)
+		#############################################
+		residuals = pTex - pTex.floor()
+		bilinearWeights = torch.prod(residuals+corners.type(torch.float)-1,dim=-1).abs()
+		triplanarWeights = (torch.clamp(n_dot,min=0)**2).transpose(1,2)
+		weights = (triplanarWeights*bilinearWeights*hits).view(6,4,self.imW,self.imH).transpose(2,3)
+
+		###############################
+		# depth: for light attentuation
+		###############################
+		depth = torch.norm(locs-light_src,dim=-1).view(self.imW,self.imH).transpose(1,0)
+
+		#########################################
+		# diffusion: factor for diffused lighting
+		#########################################
+		diffusion = torch.matmul(torch.unsqueeze(normals,dim=1),torch.unsqueeze(-light_dir,dim=2))
+		diffusion = torch.clamp(diffusion,min=0,max=1).view(self.imW,self.imH).transpose(1,0)
+
+		#############################################################################
+		# points3D: 3D locations of each pixel in homogeneous coordinates for warping
+		#############################################################################
+		points3D = torch.unsqueeze(torch.cat((locs,torch.ones_like(locs[:,:1])),dim=-1),dim=-1)
+
+		#######################################################
+		# projecttion_matrix: 3x4 projection matrix for warping
+		#######################################################
+		first_px, last_px = locs[0], locs[-1]
+		projection_matrix = self.get_projection_matrix(cam,first_px,last_px)
+
+		#######################
+		# cam_pose: camera pose
+		#######################
 		location, rotation = cam.matrix_world.decompose()[:2]
 		cam_pose = np.array(location[:3] + rotation[:4])
 
 		# create dictionary of correspondence data and save on disk
 		corrData = {
-			'indTexList': indTexList,
-			'indImList': indImList,
-			'weights': weights.type(torch.HalfTensor).contiguous(),
-			'depth': depth.type(torch.HalfTensor),
-			'diffusion': diffusion.type(torch.HalfTensor),
-			'points3D': points3D,
-			'projection_matrix': projection_matrix,
-			'cam_pose': cam_pose
+			'indTexList': indTexList,                                # list of texture locations                (used for differentiable mapping)
+			'indImList': indImList,                                  # list of corresponding image locations    (used for differentiable mapping)
+			'weights': weights.type(torch.HalfTensor).contiguous(),  # interpolation weights                    (bilinear interpolation + triplanar mapping)
+			'depth': depth.type(torch.HalfTensor),                   # depth per pixel                          (used for light attenuation in reference image)
+			'diffusion': diffusion.type(torch.HalfTensor),           # diffusion factor per pixel               (used for diffused lighting in reference image)
+			'points3D': points3D,                                    # corresponding 3D coordinate per pixel    (used for warping)
+			'projection_matrix': projection_matrix,                  # 3x4 camera projection matrix             (used for warping)
+			'cam_pose': cam_pose                                     # camera pose                              (not used during training. publish as ground truth for synthetic data?)
 		}
 		filename = os.path.join( self.outPath, 'corrData{:04d}.tar'.format(imageID))
 		torch.save(corrData, filename)
@@ -377,16 +392,9 @@ class Raycaster:
 		luminosity = self.luminosity(depth)
 		im = im * (diffusion * alpha + (1-alpha)) * luminosity
 
-		#im = im.mean(dim=0,keepdim=True).repeat(3,1,1)
 		# save
 		filename = os.path.join( self.outPath, 'im{:04d}.png'.format(imageID))
 		save_img_tensor(im.cpu(), filename)
-		# save
-		#filename = os.path.join( self.outPath, 'diff{:04d}.png'.format(imageID))
-		#save_img_tensor(diffusion.cpu(), filename)
-		# save
-		#filename = os.path.join( self.outPath, 'lum{:04d}.png'.format(imageID))
-		#save_img_tensor(luminosity.cpu(), filename)
 
 		t2 = time()
 		#print('Time to render image',t2-t1)

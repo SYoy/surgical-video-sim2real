@@ -189,14 +189,18 @@ for i in range( args.images - args.start_no ):
     scn = bpy.context.scene
     scn.update()
 
-    # Run raycasting and safe the found texture <-> image correspondences to a file:
+    # Run raycasting and saVe the found texture <-> image correspondences to a file:
     raycaster.raycast( i , generate_sequence=False)
 
     # Optionally render the image from the current camera pose
-    # (mainly for debugging purposes to test the raycasting):
+    # (mainly for debugging purposes or image-based baselines)
+    # (our model does not use these. reference images are rendered at train time)
     if args.test_render:
         raycaster.testRender( i )
 
+    # the ReCycle-GAN baselines were tzrained on triplets of consecutive video frames
+    # see "http://www.cs.cmu.edu/~aayushb/Recycle-GAN/"
+    # to recreate this training setting, we generate synthetic 3-frame sequences
     if args.triplets:
 
         delta_cam = Vector(np.random.normal(size=3))
